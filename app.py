@@ -18,7 +18,7 @@ def get_crypto_market_cap_data():
         # Example CoinGecko API endpoint for Bitcoin market cap
         # You'll need to find the specific endpoint for the *total* market cap
         url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=90"
-        headers = {"x-cg-demo-api-key": "YOUR_API_KEY"} # CoinGecko uses this header for free tier
+        headers = {"x-cg-demo-api-key": "CG-g2VJdQPBZKnue923aTbM4b1h"} # CoinGecko uses this header for free tier
         
         response = requests.get(url, headers=headers)
         response.raise_for_status()  # Raise an error for bad status codes
