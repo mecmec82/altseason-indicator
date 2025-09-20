@@ -6,6 +6,7 @@ from datetime import datetime
 import random
 
 # --- Constants & Configuration ---
+# Use st.secrets to securely access the API key
 COINGECKO_API_KEY = st.secrets["COINGECKO_API_KEY"]
 COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
 HEADERS = {"x-cg-demo-api-key": COINGECKO_API_KEY}
@@ -128,7 +129,7 @@ with st.spinner('Fetching market data... This may take a moment due to API call 
     else:
         df['SUM_TOP_10'] = df[TOP_10_COINS].sum(axis=1)
 
-# --- Perform Calculations and Present as Table ---
+# --- Perform Calculations and Present with Styling ---
 if not df.empty and 'bitcoin' in df.columns:
     df['TOTAL2'] = df['TOTAL'] - df['bitcoin']
     df['OTHERS'] = df['TOTAL'] - df['SUM_TOP_10']
@@ -145,35 +146,43 @@ if not df.empty and 'bitcoin' in df.columns:
     df['SMA_10_OTHERS'] = df['OTHERS_DIV_TOTAL'].rolling(window=10).mean()
     df['SMA_30_OTHERS'] = df['OTHERS_DIV_TOTAL'].rolling(window=30).mean()
 
-    # Determine trend
-    total_trend = "Bullish" if df['SMA_10_TOTAL'].iloc[-1] > df['SMA_30_TOTAL'].iloc[-1] else "Bearish"
-    t2t_trend = "Bullish" if df['SMA_10_T2T'].iloc[-1] > df['SMA_30_T2T'].iloc[-1] else "Bearish"
-    others_trend = "Bullish" if df['SMA_10_OTHERS'].iloc[-1] > df['SMA_30_OTHERS'].iloc[-1] else "Bearish"
+    # Determine trend and create a formatted string for display
+    def get_trend_string(sma10, sma30):
+        if sma10 > sma30:
+            return "🟢 **<span style='color:green'>Bullish</span>**"
+        else:
+            return "🔴 **<span style='color:red'>Bearish</span>**"
 
-    # Create the summary DataFrame
-    summary_data = {
-        'Indicator': [
-            "Total Market Cap (TOTAL)", 
-            "Altcoins vs. BTC (TOTAL2 / TOTAL)", 
-            "High-Risk Alts (OTHERS / TOTAL)"
-        ],
-        'Trend': [
-            total_trend, 
-            t2t_trend, 
-            others_trend
-        ],
-        'Description': [
-            "A bullish trend indicates the overall crypto market is in a positive uptrend.",
-            "A bullish trend indicates altcoins are outperforming Bitcoin, suggesting a 'risk-on' rotation from BTC into altcoins.",
-            "A bullish trend indicates smaller, more speculative altcoins are outperforming the rest of the market, signaling high-risk appetite."
-        ]
-    }
-    summary_df = pd.DataFrame(summary_data)
+    total_trend_str = get_trend_string(df['SMA_10_TOTAL'].iloc[-1], df['SMA_30_TOTAL'].iloc[-1])
+    t2t_trend_str = get_trend_string(df['SMA_10_T2T'].iloc[-1], df['SMA_30_T2T'].iloc[-1])
+    others_trend_str = get_trend_string(df['SMA_10_OTHERS'].iloc[-1], df['SMA_30_OTHERS'].iloc[-1])
 
     st.markdown("### Current Market Sentiment Indicators")
-    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+    st.markdown(f"""
+    <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 15px; border: 1px solid #ddd; border-radius: 5px;'>
+        <div>
+            <b>Total Market Cap (TOTAL)</b>
+            <p>A bullish trend indicates the overall crypto market is in a positive uptrend.</p>
+        </div>
+        <div style='text-align: right; padding-top: 15px;'>{total_trend_str}</div>
+        
+        <div style='grid-column: span 2; border-bottom: 1px solid #eee;'></div>
 
-    st.markdown("---")
+        <div>
+            <b>Altcoins vs. BTC (TOTAL2 / TOTAL)</b>
+            <p>A bullish trend indicates altcoins are outperforming Bitcoin, suggesting a 'risk-on' rotation.</p>
+        </div>
+        <div style='text-align: right; padding-top: 15px;'>{t2t_trend_str}</div>
+
+        <div style='grid-column: span 2; border-bottom: 1px solid #eee;'></div>
+
+        <div>
+            <b>High-Risk Alts (OTHERS / TOTAL)</b>
+            <p>A bullish trend indicates smaller, more speculative altcoins are outperforming, signaling high-risk appetite.</p>
+        </div>
+        <div style='text-align: right; padding-top: 15px;'>{others_trend_str}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 else:
     st.error("Failed to generate indicators due to insufficient data or missing 'bitcoin' column.")
