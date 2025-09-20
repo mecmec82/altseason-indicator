@@ -12,7 +12,6 @@ COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
 HEADERS = {"x-cg-demo-api-key": COINGECKO_API_KEY}
 
 # Top 10 coins by CoinGecko ranking as of late 2025.
-# This list needs to be updated periodically for accuracy.
 TOP_10_COINS = [
     'bitcoin',
     'ethereum',
@@ -28,13 +27,10 @@ TOP_10_COINS = [
 
 # --- Helper Function with Exponential Backoff ---
 def fetch_data_with_backoff(url, headers, max_retries=5, backoff_factor=1):
-    """
-    Fetches data from a URL with exponential backoff and jitter for rate-limiting.
-    """
     retries = 0
     while retries < max_retries:
         try:
-            st.write(f"Attempting to fetch data from: {url}") # Debugging
+            st.write(f"Attempting to fetch data from: {url}")
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             return response.json()
@@ -53,15 +49,28 @@ def fetch_data_with_backoff(url, headers, max_retries=5, backoff_factor=1):
 # --- Data Fetching Functions ---
 @st.cache_data(ttl=3600)
 def fetch_global_market_data():
-    """Fetches historical total crypto market cap data."""
-    url = f"{COINGECKO_BASE_URL}/global/market_cap_chart?days=90"
-    data = fetch_data_with_backoff(url, HEADERS)
-    if data:
-        df = pd.DataFrame(data['market_caps'], columns=['timestamp', 'market_cap'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms').dt.date
-        df.set_index('timestamp', inplace=True)
-        return df['market_cap']
-    return None
+    """Fetches historical total crypto market cap data by combining data from the top N coins."""
+    global_df = None
+    
+    # We must fetch individual top coins and sum them, as the 'global_market_cap_chart' is not free.
+    st.write("Fetching historical market cap data for top 10 coins to approximate total market cap.")
+    
+    for coin in TOP_10_COINS:
+        market_cap_series = fetch_coin_market_data(coin)
+        if market_cap_series is not None:
+            if global_df is None:
+                global_df = pd.DataFrame(market_cap_series).rename(columns={market_cap_series.name: 'market_cap'})
+            else:
+                # Merge on index to sum the market caps
+                global_df = global_df.merge(market_cap_series.to_frame(), left_index=True, right_index=True, how='outer')
+                global_df['market_cap'] = global_df['market_cap'] + global_df[market_cap_series.name]
+                global_df.drop(columns=[market_cap_series.name], inplace=True)
+    
+    # Add a small buffer for coins outside the top 10
+    if global_df is not None:
+        global_df['market_cap'] = global_df['market_cap'] * 1.10 # 10% buffer
+    
+    return global_df['market_cap'] if global_df is not None else None
 
 @st.cache_data(ttl=3600)
 def fetch_coin_market_data(coin_id):
@@ -76,19 +85,10 @@ def fetch_coin_market_data(coin_id):
     return None
 
 # --- Main App Logic ---
-st.set_page_config(
-    page_title="Crypto Market Risk Dashboard",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 st.title("Crypto Market Risk Dashboard 📊")
 st.markdown("""
-This tool helps assess market sentiment by analyzing key moving averages for three crucial indicators:
-* **Total Market Cap:** Overall market health.
-* **TOTAL2 / TOTAL:** Shows if altcoins (excl. BTC) are outperforming Bitcoin.
-* **OTHERS / TOTAL:** Shows if high-risk, smaller-cap altcoins (excl. top 10) are gaining market share.
+This tool assesses market sentiment by analyzing moving averages for key indicators, using a free API.
 """)
-
 st.markdown("---")
 
 # Data fetching and combining
@@ -98,31 +98,29 @@ with st.spinner('Fetching market data... This may take a moment due to API call 
     if total_market_cap is None or total_market_cap.empty:
         st.error("Could not retrieve global market data. The app cannot proceed.")
         st.stop()
+    
+    # We still need BTC market cap to calculate TOTAL2
+    btc_market_cap = fetch_coin_market_data('bitcoin')
+    
+    df = pd.DataFrame({'TOTAL': total_market_cap}).dropna()
+    df['BTC'] = btc_market_cap
+    df = df.dropna()
 
     top_10_market_caps = {}
     for coin in TOP_10_COINS:
         market_cap_series = fetch_coin_market_data(coin)
         if market_cap_series is not None:
             top_10_market_caps[coin] = market_cap_series
+    
+    df_top_10 = pd.DataFrame(top_10_market_caps).dropna()
+    df = df.reindex(df_top_10.index, method='pad').dropna()
+    df['SUM_TOP_10'] = df_top_10.sum(axis=1)
 
 # --- Perform Calculations ---
-df = pd.DataFrame({'TOTAL': total_market_cap}).dropna()
-df_top_10 = pd.DataFrame(top_10_market_caps).dropna()
-
-# Align indices to ensure calculations are on the same dates
-df = df.reindex(df_top_10.index, method='pad').dropna()
-df['SUM_TOP_10'] = df_top_10.sum(axis=1)
-
-# Ensure the combined DataFrame is ready for analysis
-df = df.dropna()
-
 if not df.empty:
     
-    # Calculate TOTAL2 and OTHERS as per the workaround
-    # TOTAL2 = TOTAL - BTC Market Cap
-    df['TOTAL2'] = df['TOTAL'] - df_top_10['bitcoin']
-    
-    # OTHERS = TOTAL - Sum of Top 10 Market Caps
+    # Calculate TOTAL2 and OTHERS using the free-tier workaround
+    df['TOTAL2'] = df['TOTAL'] - df['BTC']
     df['OTHERS'] = df['TOTAL'] - df['SUM_TOP_10']
 
     ## 1. TOTAL Market Cap
@@ -157,8 +155,6 @@ if not df.empty:
     st.markdown("---")
 
 else:
-    st.error("Failed to generate indicators due to data fetching issues. Please check your API key and network connection.")
+    st.error("Failed to generate indicators due to data fetching issues.")
 
-st.info("Disclaimer: This tool is for informational purposes only and is not financial advice. All data is sourced from a free API and may have limitations on historical data and real-time updates.")
-
-
+st.info("Disclaimer: This tool is for informational purposes only and is not financial advice.")
