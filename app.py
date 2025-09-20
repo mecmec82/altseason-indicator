@@ -6,7 +6,6 @@ from datetime import datetime
 import random
 
 # --- Constants & Configuration ---
-# Use st.secrets to securely access the API key
 COINGECKO_API_KEY = st.secrets["COINGECKO_API_KEY"]
 COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
 HEADERS = {"x-cg-demo-api-key": COINGECKO_API_KEY}
@@ -16,8 +15,8 @@ TOP_10_COINS = [
     'bitcoin',
     'ethereum',
     'solana',
-    'ripple', # Corrected from 'xrp'
-    'binancecoin', # Corrected from 'bnb'
+    'ripple',
+    'binancecoin',
     'cardano',
     'dogecoin',
     'shiba-inu',
@@ -65,8 +64,7 @@ def fetch_coin_market_data(coin_id):
 @st.cache_data(ttl=3600)
 def fetch_aggregated_total_market_cap():
     """
-    Aggregates market cap from individual top coins to approximate total market cap,
-    as the global/market_cap_chart endpoint requires a paid API key.
+    Aggregates market cap from individual top coins to approximate total market cap.
     """
     all_coin_market_caps = {}
     for coin_id in TOP_10_COINS:
@@ -90,21 +88,13 @@ def fetch_aggregated_total_market_cap():
     total_market_cap_series.name = 'TOTAL'
     return total_market_cap_series
 
-# --- Main App Logic ---
+# --- Main App Layout ---
 st.set_page_config(
     page_title="Crypto Market Risk Dashboard",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 st.title("Crypto Market Risk Dashboard 📊")
-st.markdown("""
-This tool helps assess market sentiment by analyzing key moving averages for three crucial indicators:
-* **Total Market Cap:** Overall market health.
-* **TOTAL2 / TOTAL:** Shows if altcoins (excl. BTC) are outperforming Bitcoin.
-* **OTHERS / TOTAL:** Shows if high-risk, smaller-cap altcoins (excl. top 10) are gaining market share.
-""")
-
-st.markdown("---")
 
 # Data fetching and combining
 with st.spinner('Fetching market data... This may take a moment due to API call limits. Please be patient.'):
@@ -134,40 +124,55 @@ with st.spinner('Fetching market data... This may take a moment due to API call 
 
     missing_top_coins = [coin for coin in TOP_10_COINS if coin not in df.columns]
     if missing_top_coins:
-        st.warning(f"Market data for {', '.join(missing_top_coins)} could not be fetched. Calculations might be less accurate.")
         df['SUM_TOP_10'] = df[[col for col in TOP_10_COINS if col in df.columns]].sum(axis=1)
     else:
         df['SUM_TOP_10'] = df[TOP_10_COINS].sum(axis=1)
 
-# --- Perform Calculations ---
+# --- Perform Calculations and Present as Table ---
 if not df.empty and 'bitcoin' in df.columns:
     df['TOTAL2'] = df['TOTAL'] - df['bitcoin']
     df['OTHERS'] = df['TOTAL'] - df['SUM_TOP_10']
 
-    ## 1. TOTAL Market Cap
-    st.subheader("1. Total Crypto Market Cap")
+    # Calculate SMAs for all indicators
     df['SMA_10_TOTAL'] = df['TOTAL'].rolling(window=10).mean()
     df['SMA_30_TOTAL'] = df['TOTAL'].rolling(window=30).mean()
-    total_trend = "Bullish" if df['SMA_10_TOTAL'].iloc[-1] > df['SMA_30_TOTAL'].iloc[-1] else "Bearish"
-    st.metric(label="Market Trend", value=total_trend)
-    st.markdown("---")
-
-    ## 2. TOTAL2/TOTAL Ratio (Altcoins vs. BTC)
-    st.subheader("2. Altcoin Performance (TOTAL2 / TOTAL)")
+    
     df['TOTAL2_DIV_TOTAL'] = (df['TOTAL2'] / df['TOTAL']) * 100
     df['SMA_10_T2T'] = df['TOTAL2_DIV_TOTAL'].rolling(window=10).mean()
     df['SMA_30_T2T'] = df['TOTAL2_DIV_TOTAL'].rolling(window=30).mean()
-    t2t_trend = "Altcoins Outperforming" if df['SMA_10_T2T'].iloc[-1] > df['SMA_30_T2T'].iloc[-1] else "Bitcoin Outperforming"
-    st.metric(label="Dominance Trend", value=t2t_trend)
-    st.markdown("---")
 
-    ## 3. OTHERS/TOTAL Ratio (High-Risk Assets)
-    st.subheader("3. High-Risk Altcoin Performance (OTHERS / TOTAL)")
     df['OTHERS_DIV_TOTAL'] = (df['OTHERS'] / df['TOTAL']) * 100
     df['SMA_10_OTHERS'] = df['OTHERS_DIV_TOTAL'].rolling(window=10).mean()
     df['SMA_30_OTHERS'] = df['OTHERS_DIV_TOTAL'].rolling(window=30).mean()
-    others_trend = "High-Risk Alts Outperforming" if df['SMA_10_OTHERS'].iloc[-1] > df['SMA_30_OTHERS'].iloc[-1] else "Mainstream Alts Outperforming"
-    st.metric(label="Risk-On Trend", value=others_trend)
+
+    # Determine trend (Bullish vs. Bearish)
+    total_trend = "Bullish" if df['SMA_10_TOTAL'].iloc[-1] > df['SMA_30_TOTAL'].iloc[-1] else "Bearish"
+    t2t_trend = "Bullish" if df['SMA_10_T2T'].iloc[-1] > df['SMA_30_T2T'].iloc[-1] else "Bearish"
+    others_trend = "Bullish" if df['SMA_10_OTHERS'].iloc[-1] > df['SMA_30_OTHERS'].iloc[-1] else "Bearish"
+
+    # Create the summary DataFrame
+    summary_data = {
+        'Indicator': [
+            "Total Market Cap (TOTAL)", 
+            "Altcoins vs. BTC (TOTAL2 / TOTAL)", 
+            "High-Risk Alts (OTHERS / TOTAL)"
+        ],
+        'Trend': [
+            total_trend, 
+            t2t_trend, 
+            others_trend
+        ],
+        'Description': [
+            "A bullish trend indicates the overall crypto market is in a positive uptrend.",
+            "A bullish trend indicates altcoins are outperforming Bitcoin, suggesting a 'risk-on' rotation from BTC into altcoins.",
+            "A bullish trend indicates smaller, more speculative altcoins are outperforming the rest of the market, signaling high-risk appetite."
+        ]
+    }
+    summary_df = pd.DataFrame(summary_data)
+
+    st.markdown("### Current Market Sentiment Indicators")
+    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
     st.markdown("---")
 
 else:
