@@ -11,13 +11,13 @@ COINGECKO_API_KEY = st.secrets["COINGECKO_API_KEY"]
 COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
 HEADERS = {"x-cg-demo-api-key": COINGECKO_API_KEY}
 
-# Top 10 coins by CoinGecko ranking as of late 2025.
+# Corrected Top 10 coins by CoinGecko ranking as of late 2025.
 TOP_10_COINS = [
     'bitcoin',
     'ethereum',
     'solana',
-    'xrp',
-    'bnb',
+    'ripple', # Corrected from 'xrp'
+    'binancecoin', # Corrected from 'bnb'
     'cardano',
     'dogecoin',
     'shiba-inu',
@@ -33,7 +33,6 @@ def fetch_data_with_backoff(url, headers, max_retries=5, backoff_factor=1):
     retries = 0
     while retries < max_retries:
         try:
-            st.write(f"Attempting to fetch data from: {url}")
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             return response.json()
@@ -58,12 +57,8 @@ def fetch_coin_market_data(coin_id):
     if data:
         df = pd.DataFrame(data['market_caps'], columns=['timestamp', 'market_cap'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms').dt.date
-        
-        # --- FIX: Drop duplicate timestamps before setting the index ---
         df.drop_duplicates(subset=['timestamp'], keep='last', inplace=True)
-        
         df.set_index('timestamp', inplace=True)
-        # Rename the series to the coin_id for easier merging/summing later
         return df['market_cap'].rename(coin_id)
     return None
 
@@ -73,20 +68,17 @@ def fetch_aggregated_total_market_cap():
     Aggregates market cap from individual top coins to approximate total market cap,
     as the global/market_cap_chart endpoint requires a paid API key.
     """
-    st.write("Fetching individual market caps for top coins to approximate TOTAL market cap...")
     all_coin_market_caps = {}
     for coin_id in TOP_10_COINS:
         market_cap_series = fetch_coin_market_data(coin_id)
         if market_cap_series is not None and not market_cap_series.empty:
             all_coin_market_caps[coin_id] = market_cap_series
-        # Add a small delay to respect CoinGecko's free API rate limit (30 calls/minute)
-        time.sleep(0.5) 
+        time.sleep(0.5)
 
     if not all_coin_market_caps:
         st.error("Could not fetch market data for any of the top coins.")
         return None
 
-    # Create a DataFrame from all collected Series
     combined_df = pd.DataFrame(all_coin_market_caps)
     combined_df = combined_df.dropna()
 
@@ -94,14 +86,11 @@ def fetch_aggregated_total_market_cap():
         st.error("Combined market cap data is empty after dropping NaNs.")
         return None
 
-    # Sum all the coin market caps to get an approximate 'TOTAL' market cap
-    # Add a buffer (e.g., 10%) for coins outside the top 10
     total_market_cap_series = combined_df.sum(axis=1) * 1.10
-    total_market_cap_series.name = 'TOTAL' # Name the series for clarity
+    total_market_cap_series.name = 'TOTAL'
     return total_market_cap_series
 
-
-# --- Main Streamlit App Layout ---
+# --- Main App Logic ---
 st.set_page_config(
     page_title="Crypto Market Risk Dashboard",
     layout="wide",
@@ -152,39 +141,33 @@ with st.spinner('Fetching market data... This may take a moment due to API call 
 
 # --- Perform Calculations ---
 if not df.empty and 'bitcoin' in df.columns:
-    
     df['TOTAL2'] = df['TOTAL'] - df['bitcoin']
     df['OTHERS'] = df['TOTAL'] - df['SUM_TOP_10']
 
     ## 1. TOTAL Market Cap
-    st.header("1. Total Crypto Market Cap")
+    st.subheader("1. Total Crypto Market Cap")
     df['SMA_10_TOTAL'] = df['TOTAL'].rolling(window=10).mean()
     df['SMA_30_TOTAL'] = df['TOTAL'].rolling(window=30).mean()
     total_trend = "Bullish" if df['SMA_10_TOTAL'].iloc[-1] > df['SMA_30_TOTAL'].iloc[-1] else "Bearish"
-    st.metric(label="Market Cap Trend", value=total_trend)
-    st.line_chart(df[['TOTAL', 'SMA_10_TOTAL', 'SMA_30_TOTAL']].tail(90))
+    st.metric(label="Market Trend", value=total_trend)
     st.markdown("---")
 
     ## 2. TOTAL2/TOTAL Ratio (Altcoins vs. BTC)
-    st.header("2. Altcoin Performance (TOTAL2 / TOTAL)")
+    st.subheader("2. Altcoin Performance (TOTAL2 / TOTAL)")
     df['TOTAL2_DIV_TOTAL'] = (df['TOTAL2'] / df['TOTAL']) * 100
     df['SMA_10_T2T'] = df['TOTAL2_DIV_TOTAL'].rolling(window=10).mean()
     df['SMA_30_T2T'] = df['TOTAL2_DIV_TOTAL'].rolling(window=30).mean()
     t2t_trend = "Altcoins Outperforming" if df['SMA_10_T2T'].iloc[-1] > df['SMA_30_T2T'].iloc[-1] else "Bitcoin Outperforming"
-    st.metric(label="Altcoin Dominance Trend", value=t2t_trend)
-    st.line_chart(df[['TOTAL2_DIV_TOTAL', 'SMA_10_T2T', 'SMA_30_T2T']].tail(90))
-    st.caption("A rising trend indicates altcoins are gaining market share relative to Bitcoin.")
+    st.metric(label="Dominance Trend", value=t2t_trend)
     st.markdown("---")
 
     ## 3. OTHERS/TOTAL Ratio (High-Risk Assets)
-    st.header("3. High-Risk Altcoin Performance (OTHERS / TOTAL)")
+    st.subheader("3. High-Risk Altcoin Performance (OTHERS / TOTAL)")
     df['OTHERS_DIV_TOTAL'] = (df['OTHERS'] / df['TOTAL']) * 100
     df['SMA_10_OTHERS'] = df['OTHERS_DIV_TOTAL'].rolling(window=10).mean()
     df['SMA_30_OTHERS'] = df['OTHERS_DIV_TOTAL'].rolling(window=30).mean()
     others_trend = "High-Risk Alts Outperforming" if df['SMA_10_OTHERS'].iloc[-1] > df['SMA_30_OTHERS'].iloc[-1] else "Mainstream Alts Outperforming"
-    st.metric(label="High-Risk Altcoin Trend", value=others_trend)
-    st.line_chart(df[['OTHERS_DIV_TOTAL', 'SMA_10_OTHERS', 'SMA_30_OTHERS']].tail(90))
-    st.caption("A rising trend in this ratio suggests a 'risk-on' environment where capital is flowing into smaller, more speculative assets.")
+    st.metric(label="Risk-On Trend", value=others_trend)
     st.markdown("---")
 
 else:
