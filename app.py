@@ -161,6 +161,4 @@ else:
 
 st.info("Disclaimer: This tool is for informational purposes only and is not financial advice. All data is sourced from a free API and may have limitations on historical data and real-time updates.")
 
-***
-The video below shows how to manage and use secrets in a Streamlit app to keep sensitive information like API keys secure. [How to use API keys and secrets in Streamlit](https://www.youtube.com/watch?v=V_IfPkhQZFU)
-http://googleusercontent.com/youtube_content/1
+
