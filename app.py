@@ -5,15 +5,9 @@ import time
 from datetime import datetime
 import random
 
-# Set Streamlit page configuration
-st.set_page_config(
-    page_title="Crypto Market Risk Dashboard",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
 # --- Constants & Configuration ---
-COINGECKO_API_KEY = "CG-g2VJdQPBZKnue923aTbM4b1h"  # ⚠️ Replace with your actual key
+# Use st.secrets to securely access the API key
+COINGECKO_API_KEY = st.secrets["COINGECKO_API_KEY"]
 COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
 HEADERS = {"x-cg-demo-api-key": COINGECKO_API_KEY}
 
@@ -40,12 +34,12 @@ def fetch_data_with_backoff(url, headers, max_retries=5, backoff_factor=1):
     retries = 0
     while retries < max_retries:
         try:
+            st.write(f"Attempting to fetch data from: {url}") # Debugging
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
             if response.status_code == 429:
-                # Exponential backoff with jitter
                 delay = (backoff_factor * (2 ** retries)) + random.uniform(0, 1)
                 st.warning(f"Rate limit hit. Retrying in {delay:.2f} seconds... (Attempt {retries + 1}/{max_retries})")
                 time.sleep(delay)
@@ -82,6 +76,11 @@ def fetch_coin_market_data(coin_id):
     return None
 
 # --- Main App Logic ---
+st.set_page_config(
+    page_title="Crypto Market Risk Dashboard",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 st.title("Crypto Market Risk Dashboard 📊")
 st.markdown("""
 This tool helps assess market sentiment by analyzing key moving averages for three crucial indicators:
@@ -143,7 +142,7 @@ if not df.empty:
     t2t_trend = "Altcoins Outperforming" if df['SMA_10_T2T'].iloc[-1] > df['SMA_30_T2T'].iloc[-1] else "Bitcoin Outperforming"
     st.metric(label="Altcoin Dominance Trend", value=t2t_trend)
     st.line_chart(df[['TOTAL2_DIV_TOTAL', 'SMA_10_T2T', 'SMA_30_T2T']].tail(90))
-    st.caption("A rising trend indicates altcoins are gaining market share relative to Bitcoin. ")
+    st.caption("A rising trend indicates altcoins are gaining market share relative to Bitcoin.")
     st.markdown("---")
 
     ## 3. OTHERS/TOTAL Ratio (High-Risk Assets)
@@ -154,10 +153,14 @@ if not df.empty:
     others_trend = "High-Risk Alts Outperforming" if df['SMA_10_OTHERS'].iloc[-1] > df['SMA_30_OTHERS'].iloc[-1] else "Mainstream Alts Outperforming"
     st.metric(label="High-Risk Altcoin Trend", value=others_trend)
     st.line_chart(df[['OTHERS_DIV_TOTAL', 'SMA_10_OTHERS', 'SMA_30_OTHERS']].tail(90))
-    st.caption("A rising trend in this ratio suggests a 'risk-on' environment where capital is flowing into smaller, more speculative assets. ")
+    st.caption("A rising trend in this ratio suggests a 'risk-on' environment where capital is flowing into smaller, more speculative assets.")
     st.markdown("---")
 
 else:
     st.error("Failed to generate indicators due to data fetching issues. Please check your API key and network connection.")
 
 st.info("Disclaimer: This tool is for informational purposes only and is not financial advice. All data is sourced from a free API and may have limitations on historical data and real-time updates.")
+
+***
+The video below shows how to manage and use secrets in a Streamlit app to keep sensitive information like API keys secure. [How to use API keys and secrets in Streamlit](https://www.youtube.com/watch?v=V_IfPkhQZFU)
+http://googleusercontent.com/youtube_content/1
