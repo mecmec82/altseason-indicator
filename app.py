@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import requests
 import time
-from datetime import datetime
 import random
 
 # --- Constants & Configuration ---
@@ -158,31 +157,32 @@ if not df.empty and 'bitcoin' in df.columns:
     others_trend_str = get_trend_string(df['SMA_10_OTHERS'].iloc[-1], df['SMA_30_OTHERS'].iloc[-1])
 
     st.markdown("### Current Market Sentiment Indicators")
-    st.markdown(f"""
-    <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 15px; border: 1px solid #ddd; border-radius: 5px;'>
-        <div>
-            <b>Total Market Cap (TOTAL)</b>
-            <p>A bullish trend indicates the overall crypto market is in a positive uptrend.</p>
-        </div>
-        <div style='text-align: right; padding-top: 15px;'>{total_trend_str}</div>
-        
-        <div style='grid-column: span 2; border-bottom: 1px solid #eee;'></div>
 
-        <div>
-            <b>Altcoins vs. BTC (TOTAL2 / TOTAL)</b>
-            <p>A bullish trend indicates altcoins are outperforming Bitcoin, suggesting a 'risk-on' rotation.</p>
-        </div>
-        <div style='text-align: right; padding-top: 15px;'>{t2t_trend_str}</div>
+    # Use st.columns for a clean, table-like layout
+    col1, col2 = st.columns([0.7, 0.3])
+    
+    with col1:
+        st.markdown("**Total Market Cap (TOTAL)**")
+        st.markdown("A bullish trend indicates the overall crypto market is in a positive uptrend.")
+    with col2:
+        st.markdown(total_trend_str, unsafe_allow_html=True)
+    st.markdown("---")
 
-        <div style='grid-column: span 2; border-bottom: 1px solid #eee;'></div>
-
-        <div>
-            <b>High-Risk Alts (OTHERS / TOTAL)</b>
-            <p>A bullish trend indicates smaller, more speculative altcoins are outperforming, signaling high-risk appetite.</p>
-        </div>
-        <div style='text-align: right; padding-top: 15px;'>{others_trend_str}</div>
-    </div>
-    """, unsafe_allow_html=True)
+    col1, col2 = st.columns([0.7, 0.3])
+    with col1:
+        st.markdown("**Altcoins vs. BTC (TOTAL2 / TOTAL)**")
+        st.markdown("A bullish trend indicates altcoins are outperforming Bitcoin, suggesting a 'risk-on' rotation.")
+    with col2:
+        st.markdown(t2t_trend_str, unsafe_allow_html=True)
+    st.markdown("---")
+    
+    col1, col2 = st.columns([0.7, 0.3])
+    with col1:
+        st.markdown("**High-Risk Alts (OTHERS / TOTAL)**")
+        st.markdown("A bullish trend indicates smaller, more speculative altcoins are outperforming, signaling high-risk appetite.")
+    with col2:
+        st.markdown(others_trend_str, unsafe_allow_html=True)
+    st.markdown("---")
 
 else:
     st.error("Failed to generate indicators due to insufficient data or missing 'bitcoin' column.")
