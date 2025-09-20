@@ -12,7 +12,6 @@ COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
 HEADERS = {"x-cg-demo-api-key": COINGECKO_API_KEY}
 
 # Top 10 coins by CoinGecko ranking as of late 2025.
-# This list needs to be updated periodically for accuracy.
 TOP_10_COINS = [
     'bitcoin',
     'ethereum',
@@ -34,7 +33,7 @@ def fetch_data_with_backoff(url, headers, max_retries=5, backoff_factor=1):
     retries = 0
     while retries < max_retries:
         try:
-            st.write(f"Attempting to fetch data from: {url}") # Debugging message
+            st.write(f"Attempting to fetch data from: {url}")
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             return response.json()
@@ -59,6 +58,10 @@ def fetch_coin_market_data(coin_id):
     if data:
         df = pd.DataFrame(data['market_caps'], columns=['timestamp', 'market_cap'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms').dt.date
+        
+        # --- FIX: Drop duplicate timestamps before setting the index ---
+        df.drop_duplicates(subset=['timestamp'], keep='last', inplace=True)
+        
         df.set_index('timestamp', inplace=True)
         # Rename the series to the coin_id for easier merging/summing later
         return df['market_cap'].rename(coin_id)
@@ -122,46 +125,35 @@ with st.spinner('Fetching market data... This may take a moment due to API call 
         st.error("Could not retrieve enough market data to proceed. Please check your internet connection or CoinGecko API key.")
         st.stop()
     
-    # Fetch individual market caps again for specific calculations (BTC for TOTAL2)
     individual_coin_market_caps = {}
-    for coin_id in TOP_10_COINS: # Re-use TOP_10_COINS to get individual series
+    for coin_id in TOP_10_COINS:
         market_cap_series = fetch_coin_market_data(coin_id)
         if market_cap_series is not None and not market_cap_series.empty:
             individual_coin_market_caps[coin_id] = market_cap_series
-        time.sleep(0.5) # Delay for rate limit
+        time.sleep(0.5)
 
     if not individual_coin_market_caps:
         st.error("Could not fetch individual coin market data for calculations. The app cannot proceed.")
         st.stop()
 
-    # Create a DataFrame combining TOTAL and individual coins
     df = pd.DataFrame({'TOTAL': total_market_cap})
     
     for coin_id, series in individual_coin_market_caps.items():
-        df = df.merge(series.to_frame(), left_index=True, right_index=True, how='left', suffixes=('', '_y'))
-        # Rename the merged column to its original coin_id if a suffix was added
-        if f"{coin_id}_y" in df.columns:
-            df.rename(columns={f"{coin_id}_y": coin_id}, inplace=True)
+        df = df.merge(series.to_frame(), left_index=True, right_index=True, how='left')
 
     df = df.dropna()
 
-    # Ensure all TOP_10_COINS are present in df for SUM_TOP_10 calculation
     missing_top_coins = [coin for coin in TOP_10_COINS if coin not in df.columns]
     if missing_top_coins:
         st.warning(f"Market data for {', '.join(missing_top_coins)} could not be fetched. Calculations might be less accurate.")
-        # If some top 10 coins are missing, we can still try to sum the available ones
         df['SUM_TOP_10'] = df[[col for col in TOP_10_COINS if col in df.columns]].sum(axis=1)
     else:
         df['SUM_TOP_10'] = df[TOP_10_COINS].sum(axis=1)
 
-
 # --- Perform Calculations ---
 if not df.empty and 'bitcoin' in df.columns:
     
-    # Calculate TOTAL2 (TOTAL - BTC)
     df['TOTAL2'] = df['TOTAL'] - df['bitcoin']
-    
-    # Calculate OTHERS (TOTAL - Sum of Top 10 Market Caps)
     df['OTHERS'] = df['TOTAL'] - df['SUM_TOP_10']
 
     ## 1. TOTAL Market Cap
